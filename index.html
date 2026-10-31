@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#7b5232">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="School Desk">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="config.js"></script>
+<title>School Desk</title>
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+[hidden]{display:none!important}
+img{max-width:100%}
+/* Layout: a wooden Desk of notebooks. Tap one and it opens onto its own endless Wall (pages, photos, ink). */
+:root{
+  --wood-a:#a9764a; --wood-b:#b4824f; --wood-c:#a06e44; --ground:#7b5232;
+  --chrome:#ffffff; --ink:#1d1f24; --dim:#6a6f78; --line:#dde0e5;
+  --accent:#2f6df6; --on-accent:#ffffff;
+  --wall:#ebe8e0; --wall-dot:#c8c3b5;
+  --shadow:0 6px 22px rgba(20,16,10,.22); --ok:#1f9d55; --warn:#d9822b; --bad:#c4271b;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Hebrew","Noto Sans Arabic",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --wood-a:#7d5534; --wood-b:#865c39; --wood-c:#74502f; --ground:#5b3c22;
+    --chrome:#262a31; --ink:#eceef2; --dim:#a0a6b1; --line:#3a3f48;
+    --accent:#7ba2ff; --on-accent:#0d1220; --shadow:0 6px 22px rgba(0,0,0,.5); --ok:#4cc38a; --warn:#f0a35e; --bad:#ff8a80; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --wood-a:#7d5534; --wood-b:#865c39; --wood-c:#74502f; --ground:#5b3c22;
+  --chrome:#262a31; --ink:#eceef2; --dim:#a0a6b1; --line:#3a3f48;
+  --accent:#7ba2ff; --on-accent:#0d1220; --shadow:0 6px 22px rgba(0,0,0,.5); --ok:#4cc38a; --warn:#f0a35e; --bad:#ff8a80; color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{position:relative;background:var(--ground);color:var(--ink);font:15px/1.35 var(--font);-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- Desk ---------- */
+#desk{position:absolute;inset:0;overflow:auto;
+  background:
+    radial-gradient(ellipse at 18% 0%,rgba(255,236,200,.30),rgba(255,236,200,0) 60%),
+    repeating-linear-gradient(90deg,var(--wood-a) 0 7px,var(--wood-b) 7px 12px,var(--wood-c) 12px 21px);}
+#shelf{min-height:100%;display:flex;flex-wrap:wrap;gap:44px 36px;justify-content:center;align-content:flex-start;
+  padding:48px max(24px,env(safe-area-inset-right)) 72px max(24px,env(safe-area-inset-left))}
+.nbk{--c:#2f5fd0;--r:0deg;position:relative;width:clamp(120px,17vw,170px);aspect-ratio:3/4;border:0;padding:0;cursor:pointer;
+  background:var(--c);border-radius:6px 12px 12px 6px;transform:rotate(var(--r));
+  box-shadow:inset 9px 0 0 rgba(0,0,0,.2),3px 0 0 #ece7d6,5px 0 0 #cfc9b6,0 16px 26px rgba(40,20,0,.42);
+  transition:transform .18s ease}
+.nbk:hover,.nbk:focus-visible{transform:rotate(var(--r)) translateY(-6px)}
+.nbk::before{content:"";position:absolute;right:18px;top:0;bottom:0;width:9px;background:rgba(0,0,0,.22)}
+.nbk .lab{position:absolute;left:24px;right:36px;top:20%;min-height:24%;padding:8px 6px;background:#f5efe0;border-radius:4px;color:#2f2a20;
+  font-weight:650;font-size:14px;line-height:1.2;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;overflow-wrap:anywhere}
+.nbk.new{background:transparent;box-shadow:none;border:2px dashed rgba(255,244,220,.85);display:grid;place-items:center;color:#fff4dc}
+.nbk.new::before{display:none}
+.nbk.new svg{width:44px;height:44px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round}
+.nbk.pulse{animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:rotate(var(--r)) scale(1)}50%{transform:rotate(var(--r)) scale(1.05)}}
+.fly{position:fixed;z-index:60;border-radius:6px 12px 12px 6px;pointer-events:none;transition:left .4s cubic-bezier(.2,.7,.2,1),top .4s cubic-bezier(.2,.7,.2,1),width .4s cubic-bezier(.2,.7,.2,1),height .4s cubic-bezier(.2,.7,.2,1),border-radius .4s}
+
+/* ---------- Wall ---------- */
+#wall{position:absolute;inset:0;z-index:20}
+#stage{position:absolute;inset:0;background-color:var(--wall);
+  background-image:radial-gradient(circle,var(--wall-dot) 1.3px,transparent 1.7px);
+  touch-action:none;-webkit-touch-callout:none;cursor:crosshair}
+#stage[data-tool="select"]{cursor:default}
+#stage[data-tool="hand"]{cursor:grab}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#lv{pointer-events:none}
+
+.pill{background:var(--chrome);border-radius:16px;box-shadow:var(--shadow);color:var(--ink)}
+.ib{width:44px;height:44px;border:0;border-radius:12px;background:transparent;display:grid;place-items:center;cursor:pointer;flex:0 0 auto;padding:0}
+.ib svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ib:hover{background:color-mix(in srgb,var(--ink) 9%,transparent)}
+.ib.on{background:var(--accent);color:var(--on-accent)}
+.ib:disabled{opacity:.3;cursor:default}
+.ib:disabled:hover{background:transparent}
+
+#top{position:absolute;top:12px;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));display:flex;gap:8px;align-items:center;pointer-events:none}
+#top>*{pointer-events:auto}
+#top .gap{flex:1;pointer-events:none}
+.titlepill{flex:0 1 340px;min-width:0;height:44px;display:flex;align-items:center;gap:10px;padding:0 14px 0 14px}
+.titlepill i{width:14px;height:18px;border-radius:2px 4px 4px 2px;flex:0 0 auto;box-shadow:inset 3px 0 0 rgba(0,0,0,.25)}
+#title{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:650 16px var(--font);outline:none;padding:0;-webkit-user-select:text;user-select:text}
+.titlepill:focus-within{outline:2px solid var(--accent)}
+#menu{position:absolute;top:64px;right:max(12px,env(safe-area-inset-right));padding:6px}
+#delNb{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:0;background:transparent;border-radius:12px;cursor:pointer;color:#c4271b;font-weight:600}
+#delNb svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+:root[data-theme="dark"] #delNb{color:#ff8a80}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) #delNb{color:#ff8a80}}
+#delNb:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
+
+#zoom{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:88px;display:flex;flex-direction:column;padding:4px}
+#dock{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:calc(100% - 24px);display:flex;align-items:center;gap:2px;padding:4px;overflow-x:auto;scrollbar-width:none}
+#dock::-webkit-scrollbar{display:none}
+.sep{width:1px;height:26px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.sw{width:44px;height:44px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;flex:0 0 auto;padding:0;border-radius:12px}
+.sw span{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);display:block}
+.sw.on span{box-shadow:0 0 0 3px var(--chrome),0 0 0 5px var(--accent)}
+.sz i{display:block;border-radius:50%;background:currentColor}
+
+#sel{position:absolute;left:0;top:0;pointer-events:none;border:2px solid var(--accent)}
+#selDel{position:absolute;right:-22px;top:-22px;pointer-events:auto}
+#selH{position:absolute;right:-22px;bottom:-22px;width:44px;height:44px;pointer-events:auto;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;border:0;background:transparent;padding:0}
+#selH::after{content:"";width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid var(--chrome);box-shadow:var(--shadow)}
+
+#toast{position:absolute;left:50%;bottom:96px;transform:translate(-50%,12px);padding:10px 16px;border-radius:12px;background:var(--ink);color:var(--chrome);font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:80;max-width:calc(100% - 32px)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion: reduce){.nbk,.nbk.pulse,.fly,#toast,.dot.busy{transition:none;animation:none}}
+
+/* ---------- account and sync ---------- */
+.vh{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+#acctBtn{position:absolute;top:12px;right:max(12px,env(safe-area-inset-right));z-index:15}
+.dot{position:absolute;right:8px;top:8px;width:12px;height:12px;border-radius:50%;border:2px solid var(--chrome);background:var(--dim)}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+.dot.busy{background:var(--accent);animation:blink 1s ease-in-out infinite}
+@keyframes blink{50%{opacity:.3}}
+#auth{position:absolute;inset:0;z-index:70;background:rgba(20,14,8,.55);display:grid;place-items:center;padding:16px}
+#auth .card{width:min(420px,100%);max-height:100%;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+#auth h2{margin:0;font:700 20px var(--font)}
+#auth p{margin:0;line-height:1.4}
+#auth form,#authIn,#authOut{display:flex;flex-direction:column;gap:10px}
+#auth label{font-weight:600;font-size:13px;color:var(--dim)}
+#auth input{width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:0 12px;font:16px var(--font);-webkit-user-select:text;user-select:text}
+.seg{display:flex;gap:4px;padding:4px;border-radius:12px;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.seg button{flex:1;height:38px;border:0;border-radius:9px;background:transparent;cursor:pointer;font-weight:600}
+.seg button.on{background:var(--chrome);box-shadow:var(--shadow)}
+.btn{height:48px;border:0;border-radius:12px;background:var(--accent);color:var(--on-accent);font:700 16px var(--font);cursor:pointer;padding:0 16px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:var(--bad);color:#fff;border-color:transparent}
+.btn:disabled{opacity:.5}
+.msg{min-height:20px;color:var(--bad);font-size:14px;font-weight:600}
+.note{color:var(--dim);font-size:14px}
+</style>
+</head>
+<body>
+
+<div id="desk"><div id="shelf"></div></div>
+
+<div id="wall" hidden>
+  <div id="stage" data-tool="pen"><canvas id="cv"></canvas><canvas id="lv"></canvas></div>
+
+  <div id="sel" hidden>
+    <button id="selDel" class="ib pill" aria-label="Delete this item" title="Delete"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>
+    <button id="selH" aria-label="Resize" title="Resize"></button>
+  </div>
+
+  <div id="top">
+    <button id="back" class="ib pill" aria-label="Back to the desk" title="Desk"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="titlepill pill"><i id="swatch"></i><input id="title" dir="auto" maxlength="60" aria-label="Notebook name" autocomplete="off"></div>
+    <div class="gap"></div>
+    <button id="menuBtn" class="ib pill" aria-label="Notebook menu" title="Menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg></button>
+  </div>
+  <div id="menu" class="pill" hidden><button id="delNb"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg><span data-i18n="delete_nb"></span></button></div>
+
+  <div id="zoom" class="pill">
+    <button id="zin" class="ib" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="zout" class="ib" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+    <button id="zfit" class="ib" aria-label="Show everything" title="Show everything"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </div>
+
+  <div id="dock" class="pill" role="toolbar" aria-label="Tools">
+    <button class="ib" data-tool="pen" aria-label="Pen" title="Pen"><svg viewBox="0 0 24 24"><path d="M4 20l1-5L16 4l4 4L9 19l-5 1Z"/><path d="M14 6l4 4"/></svg></button>
+    <button class="ib" data-tool="mark" aria-label="Highlighter" title="Highlighter"><svg viewBox="0 0 24 24"><path d="M9 14l-4 4v2h4l4-4"/><path d="M8 13l7-9 5 5-9 7"/></svg></button>
+    <button class="ib" data-tool="eraser" aria-label="Eraser" title="Eraser"><svg viewBox="0 0 24 24"><path d="M4 15l8-9 8 8-5 5H9l-5-4Z"/><path d="M9 10l8 8"/></svg></button>
+    <button class="ib" data-tool="select" aria-label="Move and resize" title="Move"><svg viewBox="0 0 24 24"><path d="M6 3l12 8-5 1.5L11 18 6 3Z"/></svg></button>
+    <button class="ib" data-tool="hand" aria-label="Pan" title="Pan"><svg viewBox="0 0 24 24"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0V11m0-3.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.5a6 6 0 0 1-5-2.7L3.8 15a1.5 1.5 0 0 1 2.4-1.8L8 15"/></svg></button>
+    <div class="sep"></div>
+    <span id="colors" style="display:flex"></span>
+    <div class="sep"></div>
+    <button class="ib sz" data-size="0" aria-label="Thin" title="Thin"><i style="width:5px;height:5px"></i></button>
+    <button class="ib sz" data-size="1" aria-label="Medium" title="Medium"><i style="width:10px;height:10px"></i></button>
+    <button class="ib sz" data-size="2" aria-label="Thick" title="Thick"><i style="width:17px;height:17px"></i></button>
+    <div class="sep"></div>
+    <button id="undo" class="ib" aria-label="Undo" title="Undo"><svg viewBox="0 0 24 24"><path d="M9 6L4 11l5 5"/><path d="M4 11h9a5 5 0 0 1 0 10h-3"/></svg></button>
+    <button id="redo" class="ib" aria-label="Redo" title="Redo"><svg viewBox="0 0 24 24"><path d="M15 6l5 5-5 5"/><path d="M20 11h-9a5 5 0 0 0 0 10h3"/></svg></button>
+    <div class="sep"></div>
+    <button id="addPage" class="ib" aria-label="Add a page" title="New page"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M12 11v6M9 14h6"/></svg></button>
+    <label id="addPhoto" class="ib" for="file" role="button" tabindex="0" aria-label="Add a photo" title="Photo"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg></label>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<button id="acctBtn" class="ib pill" aria-label="Account and sync" title="Sync"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.6 4.5 4.5 0 0 1 17 18H7Z"/></svg><span id="acctDot" class="dot" hidden></span></button>
+
+<div id="auth" hidden>
+  <div class="card pill" role="dialog" aria-modal="true" aria-labelledby="authT">
+    <h2 id="authT"></h2>
+    <div id="authOut">
+      <p class="note" data-i18n="st_none"></p>
+      <div class="seg"><button id="tabIn" type="button" class="on" data-i18n="signin"></button><button id="tabNew" type="button" data-i18n="create"></button></div>
+      <form id="authForm">
+        <label for="aName" data-i18n="name"></label>
+        <input id="aName" name="username" autocomplete="username" maxlength="30" dir="auto">
+        <label for="aPin" data-i18n="pin"></label>
+        <input id="aPin" name="password" type="password" inputmode="numeric" autocomplete="current-password" maxlength="6">
+        <div id="pin2wrap" hidden>
+          <label for="aPin2" data-i18n="pin2"></label>
+          <input id="aPin2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6">
+        </div>
+        <p id="aMsg" class="msg" role="alert"></p>
+        <button id="aGo" type="submit" class="btn"></button>
+      </form>
+    </div>
+    <div id="authIn" hidden>
+      <p id="aWho"></p>
+      <p id="aStatus" class="note"></p>
+      <p id="aNote" class="note" hidden></p>
+      <button id="aSync" class="btn" type="button" data-i18n="sync_now"></button>
+      <button id="aOut" class="btn ghost" type="button"></button>
+    </div>
+    <button id="aClose" class="btn ghost" type="button" data-i18n="close"></button>
+  </div>
+</div>
+
+<input type="file" id="file" accept="image/*" class="vh" tabindex="-1">
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const hash=s=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)};
+/* ---------- language: Hebrew or English, by the device ---------- */
+const LANG=(navigator.language||'en').toLowerCase().startsWith('he')?'he':'en';
+const STR={
+  en:{
+    nb:'Notebook', copy:'(copy)',
+    signin:'Sign in', create:'Create account', account:'Account', name:'Name',
+    pin:'PIN (4 to 6 digits)', pin2:'Repeat the PIN',
+    signed_as:'Signed in as {n}', sync_now:'Sync now', sign_out:'Sign out', sign_out_confirm:'Sign out and clear this device',
+    clear_note:'Your notebooks stay in your account. They are removed from this device.',
+    unsynced:'{n} not synced yet and will be lost here.', close:'Close',
+    st_none:'Sign in to keep your notebooks on every device.',
+    st_ok:'All notebooks are saved to your account.', st_busy:'Syncing…',
+    st_off:'No connection. Changes stay on this device and are sent later.', st_err:'Sync problem. Trying again soon.',
+    err_exists:'That name is taken.', err_auth:'Wrong name or PIN.', err_locked:'Too many tries. Wait 10 minutes.',
+    err_pin:'The PIN must be 4 to 6 digits.', err_name:'The name must be 2 to 30 characters.', err_pin_match:'The PINs do not match.',
+    err_net:'Cannot reach the server.', err_noserver:'Sync is not set up yet.',
+    relogin:'Please sign in again.', conflict:'Two devices changed the same notebook. Both versions are kept.',
+    delete_nb:'Delete notebook', delete_confirm:'Tap again to delete',
+    save_fail:'Could not save. The browser storage may be full.', photo_fail:'Could not save the photo.',
+    not_pic:'That file is not a picture I can open.', no_store:'This browser will not keep notebooks after you close it.'
+  },
+  he:{
+    nb:'מחברת', copy:'(עותק)',
+    signin:'כניסה', create:'יצירת חשבון', account:'חשבון', name:'שם',
+    pin:'קוד אישי (4 עד 6 ספרות)', pin2:'אימות הקוד',
+    signed_as:'מחוברים בתור {n}', sync_now:'סנכרון עכשיו', sign_out:'יציאה', sign_out_confirm:'יציאה ומחיקה מהמכשיר הזה',
+    clear_note:'המחברות נשארות בחשבון שלכם. הן יימחקו מהמכשיר הזה.',
+    unsynced:'{n} מחברות עוד לא סונכרנו ויאבדו כאן.', close:'סגירה',
+    st_none:'היכנסו כדי לשמור את המחברות בכל המכשירים.',
+    st_ok:'כל המחברות שמורות בחשבון.', st_busy:'מסנכרנים…',
+    st_off:'אין חיבור. השינויים נשמרים במכשיר ויישלחו אחר כך.', st_err:'בעיית סנכרון. ננסה שוב בקרוב.',
+    err_exists:'השם הזה תפוס.', err_auth:'שם או קוד שגויים.', err_locked:'יותר מדי ניסיונות. נסו שוב בעוד 10 דקות.',
+    err_pin:'הקוד חייב להיות 4 עד 6 ספרות.', err_name:'השם חייב להיות 2 עד 30 תווים.', err_pin_match:'הקודים לא תואמים.',
+    err_net:'אין חיבור לשרת.', err_noserver:'הסנכרון עוד לא הוגדר.',
+    relogin:'יש להיכנס מחדש.', conflict:'שני מכשירים שינו את אותה מחברת. שתי הגרסאות נשמרו.',
+    delete_nb:'מחיקת מחברת', delete_confirm:'לחצו שוב כדי למחוק',
+    save_fail:'השמירה נכשלה. ייתכן שהאחסון בדפדפן מלא.', photo_fail:'שמירת התמונה נכשלה.',
+    not_pic:'הקובץ הזה אינו תמונה שאפשר לפתוח.', no_store:'הדפדפן הזה לא ישמור את המחברות אחרי הסגירה.'
+  }
+};
+const t=(k,v)=>{let s=(STR[LANG][k]!=null?STR[LANG][k]:STR.en[k]!=null?STR.en[k]:k);if(v)for(const x in v)s=s.replace('{'+x+'}',v[x]);return s};
+function applyI18n(){document.documentElement.lang=LANG;document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)})}
+
+const PALETTE=['#1b1b1f','#1e5cff','#e0243b','#1f9d55','#8a3ffc','#f08c00'];
+const COVERS=['#2f5fd0','#c8403a','#2d7d57','#e5a823','#7048e8','#1098ad','#d6336c','#e8590c'];
+const SIZES=[2,4,9];                 // pen width in wall units
+const A4={w:794,h:1123};
+const TOP=68, BOT=96;                // space taken by the top bar and the dock
+
+let toastT=0;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800)}
+
+/* ---------- storage: IndexedDB, with an in-memory fallback ---------- */
+let db=null; const mem=new Map(), memImg=new Map();
+function openDB(){return new Promise(res=>{try{
+  const r=indexedDB.open('schooldesk',1);
+  r.onupgradeneeded=()=>{r.result.createObjectStore('nb',{keyPath:'id'});r.result.createObjectStore('img',{keyPath:'id'})};
+  r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); r.onblocked=()=>res(null);
+}catch(e){res(null)}})}
+const rq=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const st=(n,m)=>db.transaction(n,m).objectStore(n);
+async function dbGet(id){ if(!db) return mem.get(id)||null; try{return (await rq(st('nb','readonly').get(id)))||null}catch(e){return mem.get(id)||null} }
+async function dbAll(){ if(!db) return [...mem.values()]; try{return await rq(st('nb','readonly').getAll())}catch(e){return [...mem.values()]} }
+async function dbPut(o){ if(!db){mem.set(o.id,o);return} try{await rq(st('nb','readwrite').put(o))}catch(e){toast(t('save_fail'))} }
+async function dbDel(id){ mem.delete(id); if(db) try{await rq(st('nb','readwrite').delete(id))}catch(e){} }
+async function imgPut(id,src){ if(!db){memImg.set(id,src);return} try{await rq(st('img','readwrite').put({id,src}))}catch(e){memImg.set(id,src);toast(t('photo_fail'))} }
+async function imgGet(id){ if(memImg.has(id))return memImg.get(id); if(db){try{const r=await rq(st('img','readonly').get(id));return r?r.src:null}catch(e){}} return null }
+async function imgDel(id){ memImg.delete(id); if(db) try{await rq(st('img','readwrite').delete(id))}catch(e){} }
+
+/* ---------- state ---------- */
+const stage=$('stage'), cv=$('cv'), lv=$('lv'), cx=cv.getContext('2d'), lx=lv.getContext('2d');
+let nb=null, view={x:0,y:0,k:1}, tool='pen', color=PALETTE[0], sizeIdx=1, penSeen=false;
+let W=0,H=0,DPR=1, G=null, cur=null, sel=null, RS=null, spaceDown=false, skipSave=false, opening=false, animRaf=0;
+let undoS=[], redoS=[];
+const touches=new Map(), imgs=new Map(), bbs=new WeakMap();
+
+/* ---------- canvas, view ---------- */
+function resize(){
+  const r=stage.getBoundingClientRect(); W=r.width; H=r.height; DPR=Math.min(window.devicePixelRatio||1,2);
+  const pw=Math.round(W*DPR), ph=Math.round(H*DPR);
+  if(cv.width!==pw||cv.height!==ph){cv.width=lv.width=pw;cv.height=lv.height=ph}
+  renderAll();
+}
+new ResizeObserver(()=>{if(!$('wall').hidden)resize()}).observe(stage);
+const setT=c=>c.setTransform(DPR*view.k,0,0,DPR*view.k,DPR*view.x,DPR*view.y);
+const toWorld=(sx,sy)=>({x:(sx-view.x)/view.k,y:(sy-view.y)/view.k});
+
+let raf=0;
+function renderAll(){ if(raf)return; raf=requestAnimationFrame(()=>{raf=0;draw();updSel();updBg()}) }
+
+function updBg(){
+  let sp=40*view.k; while(sp<16)sp*=2; while(sp>140)sp/=2;
+  stage.style.backgroundSize=sp+'px '+sp+'px';
+  stage.style.backgroundPosition=(view.x-sp/2)+'px '+(view.y-sp/2)+'px';
+}
+
+/* ---------- strokes ---------- */
+function bbox(s){
+  let b=bbs.get(s); if(b)return b;
+  const p=s.pts; let x0=1e12,y0=1e12,x1=-1e12,y1=-1e12;
+  for(let i=0;i<p.length;i+=2){ if(p[i]<x0)x0=p[i]; if(p[i]>x1)x1=p[i]; if(p[i+1]<y0)y0=p[i+1]; if(p[i+1]>y1)y1=p[i+1]; }
+  const pad=s.t==='mark'?s.w*2.6:s.w*0.9;
+  b=[x0-pad,y0-pad,x1+pad,y1+pad]; bbs.set(s,b); return b;
+}
+const pw=(s,i)=>s.w*(0.35+1.3*s.ps[i]/100);
+function pathSmooth(c,p){
+  const n=p.length>>1; c.beginPath(); c.moveTo(p[0],p[1]);
+  if(n<3){for(let i=1;i<n;i++)c.lineTo(p[2*i],p[2*i+1])}
+  else{
+    for(let i=1;i<n-1;i++) c.quadraticCurveTo(p[2*i],p[2*i+1],(p[2*i]+p[2*i+2])/2,(p[2*i+1]+p[2*i+3])/2);
+    c.lineTo(p[2*n-2],p[2*n-1]);
+  }
+}
+function drawStroke(c,s){
+  const p=s.pts, n=p.length>>1; if(!n)return;
+  const mark=s.t==='mark', m=mark?5:1;
+  c.save(); c.lineCap='round'; c.lineJoin='round'; c.strokeStyle=s.c; c.fillStyle=s.c; if(mark)c.globalAlpha=.35;
+  if(n===1){ c.beginPath(); c.arc(p[0],p[1],s.w*m*0.5*(s.ps?(0.35+1.3*s.ps[0]/100):1),0,6.2832); c.fill(); }
+  else if(s.ps&&!mark){
+    if(n===2){ c.lineWidth=pw(s,1); c.beginPath(); c.moveTo(p[0],p[1]); c.lineTo(p[2],p[3]); c.stroke(); }
+    else{
+      let ax=p[0],ay=p[1];
+      for(let i=1;i<n-1;i++){
+        const mx=(p[2*i]+p[2*i+2])/2, my=(p[2*i+1]+p[2*i+3])/2;
+        c.lineWidth=pw(s,i); c.beginPath(); c.moveTo(ax,ay); c.quadraticCurveTo(p[2*i],p[2*i+1],mx,my); c.stroke(); ax=mx; ay=my;
+      }
+      c.lineWidth=pw(s,n-1); c.beginPath(); c.moveTo(ax,ay); c.lineTo(p[2*n-2],p[2*n-1]); c.stroke();
+    }
+  } else { c.lineWidth=s.w*m; pathSmooth(c,p); c.stroke(); }
+  c.restore();
+}
+function liveSeg(){
+  const p=cur.pts, n=p.length>>1; if(n<2)return;
+  const i=n-1, m=cur.t==='mark'?5:1;
+  const ax=n>=3?(p[2*(i-2)]+p[2*(i-1)])/2:p[0], ay=n>=3?(p[2*(i-2)+1]+p[2*(i-1)+1])/2:p[1];
+  const mx=(p[2*(i-1)]+p[2*i])/2, my=(p[2*(i-1)+1]+p[2*i+1])/2;
+  lx.lineCap='round'; lx.lineJoin='round'; lx.strokeStyle=cur.c;
+  lx.lineWidth=cur.ps?pw(cur,i-1):cur.w*m;
+  lx.beginPath(); lx.moveTo(ax,ay); lx.quadraticCurveTo(p[2*(i-1)],p[2*(i-1)+1],mx,my); lx.stroke();
+}
+function segD2(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy; let t=l?((px-ax)*dx+(py-ay)*dy)/l:0; t=clamp(t,0,1);
+  const x=ax+t*dx-px,y=ay+t*dy-py; return x*x+y*y;
+}
+function strokeHit(s,x,y,r){
+  const b=bbox(s); if(x<b[0]-r||x>b[2]+r||y<b[1]-r||y>b[3]+r)return false;
+  const p=s.pts, n=p.length>>1, rr=r+(s.t==='mark'?s.w*2.5:s.w*0.65), r2=rr*rr;
+  if(n===1) return (p[0]-x)**2+(p[1]-y)**2<=r2;
+  for(let i=0;i<n-1;i++) if(segD2(x,y,p[2*i],p[2*i+1],p[2*i+2],p[2*i+3])<=r2) return true;
+  return false;
+}
+
+/* ---------- drawing the wall ---------- */
+function draw(){
+  cx.setTransform(1,0,0,1,0,0); cx.clearRect(0,0,cv.width,cv.height);
+  if(!nb)return;
+  setT(cx);
+  const k=view.k, x0=-view.x/k, y0=-view.y/k, x1=x0+W/k, y1=y0+H/k;
+  const vis=r=>r.x<x1&&r.x+r.w>x0&&r.y<y1&&r.y+r.h>y0;
+  for(const p of nb.pages){ if(!vis(p))continue; cx.fillStyle='rgba(30,24,12,.14)'; cx.fillRect(p.x+5,p.y+7,p.w,p.h); cx.fillStyle='#fff'; cx.fillRect(p.x,p.y,p.w,p.h); }
+  cx.imageSmoothingQuality='high';
+  for(const i of nb.images){ if(!vis(i))continue; const im=imgs.get(i.id); if(im)cx.drawImage(im,i.x,i.y,i.w,i.h); }
+  for(const s of nb.strokes){ const b=bbox(s); if(b[0]>x1||b[2]<x0||b[1]>y1||b[3]<y0)continue; drawStroke(cx,s); }
+}
+function updSel(){
+  const el=$('sel');
+  if(sel&&(!nb||!nb[sel.kind].includes(sel.item)))sel=null;
+  if(!nb||!sel||tool!=='select'){el.hidden=true;return}
+  const it=sel.item,k=view.k; el.hidden=false;
+  el.style.left=(view.x+it.x*k)+'px'; el.style.top=(view.y+it.y*k)+'px'; el.style.width=(it.w*k)+'px'; el.style.height=(it.h*k)+'px';
+}
+
+/* ---------- undo / redo ---------- */
+function record(a){undoS.push(a);if(undoS.length>300)undoS.shift();redoS.length=0;updUI();touch()}
+function perform(a){a.redo();record(a);renderAll()}
+function after(){updUI();renderAll();touch()}
+function doUndo(){cancelCurrent();const a=undoS.pop();if(!a)return;a.undo();redoS.push(a);after()}
+function doRedo(){cancelCurrent();const a=redoS.pop();if(!a)return;a.redo();undoS.push(a);after()}
+function applySnap(list){for(const [o,pr] of list){Object.assign(o,pr);bbs.delete(o)}}
+function xform(before,fn){
+  return before.map(([o,pr])=>{
+    if(pr.pts){const src=pr.pts,pts=new Array(src.length);for(let i=0;i<src.length;i+=2){const q=fn.pt(src[i],src[i+1]);pts[i]=Math.round(q[0]*10)/10;pts[i+1]=Math.round(q[1]*10)/10}return [o,{pts,w:fn.len(pr.w)}]}
+    const q=fn.pt(pr.x,pr.y); return [o,{x:q[0],y:q[1],w:fn.len(pr.w),h:fn.len(pr.h)}];
+  });
+}
+function carried(item,kind){
+  const out={strokes:[],images:[]}, inside=(mx,my)=>mx>=item.x&&mx<=item.x+item.w&&my>=item.y&&my<=item.y+item.h;
+  for(const s of nb.strokes){const b=bbox(s); if(inside((b[0]+b[2])/2,(b[1]+b[3])/2))out.strokes.push(s)}
+  if(kind==='pages') for(const i of nb.images) if(inside(i.x+i.w/2,i.y+i.h/2))out.images.push(i);
+  return out;
+}
+function snapGroup(item,grp){
+  const L=[[item,{x:item.x,y:item.y,w:item.w,h:item.h}]];
+  for(const i of grp.images)L.push([i,{x:i.x,y:i.y,w:i.w,h:i.h}]);
+  for(const s of grp.strokes)L.push([s,{pts:s.pts,w:s.w}]);
+  return L;
+}
+
+/* ---------- pointer input ---------- */
+const pr=e=>Math.round((e.pressure||0.5)*100);
+function cancelCurrent(){
+  if(!G)return;
+  if(G.type==='draw'){cur=null;lx.setTransform(1,0,0,1,0,0);lx.clearRect(0,0,lv.width,lv.height)}
+  else if(G.type==='drag'){applySnap(G.before);renderAll()}
+  else if(G.type==='erase'){for(let k=G.removed.length-1;k>=0;k--)nb.strokes.splice(G.removed[k].i,0,G.removed[k].s);renderAll()}
+  G=null;
+}
+stage.addEventListener('contextmenu',e=>e.preventDefault());
+stage.addEventListener('pointerdown',e=>{
+  if(!nb)return;
+  e.preventDefault(); if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  if(!$('menu').hidden)closeMenu();
+  if(e.pointerType==='pen')penSeen=true;
+  if(e.pointerType==='touch'){
+    if(G&&G.ptype==='pen')return;                    // palm while writing with a stylus
+    touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(touches.size===2){cancelCurrent();startPinch();return}
+    if(touches.size>2)return;
+  }
+  if(e.pointerType==='pen'&&G&&G.ptype==='touch')cancelCurrent();
+  if(G)return;
+  try{stage.setPointerCapture(e.pointerId)}catch(_){}
+  const ptype=e.pointerType;
+  if(ptype==='mouse'&&e.button===1||spaceDown||tool==='hand'||(ptype==='touch'&&penSeen)){G={type:'pan',pid:e.pointerId,ptype,lx:e.clientX,ly:e.clientY};return}
+  if(ptype==='mouse'&&e.button!==0)return;
+  if(tool==='pen'||tool==='mark')startDraw(e); else if(tool==='eraser')startErase(e); else startSelect(e);
+});
+stage.addEventListener('pointermove',e=>{
+  if(e.pointerType==='touch'&&touches.has(e.pointerId))touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(!G)return;
+  if(G.type==='pinch'){pinchMove();return}
+  if(e.pointerId!==G.pid)return;
+  if(G.type==='pan'){view.x+=e.clientX-G.lx;view.y+=e.clientY-G.ly;G.lx=e.clientX;G.ly=e.clientY;renderAll()}
+  else if(G.type==='draw'){const evs=e.getCoalescedEvents?e.getCoalescedEvents():[];for(const ev of (evs.length?evs:[e]))addPt(ev)}
+  else if(G.type==='erase'){eraseAt(toWorld(e.clientX,e.clientY))}
+  else if(G.type==='drag'){
+    const w=toWorld(e.clientX,e.clientY), dx=w.x-G.sx, dy=w.y-G.sy;
+    if(!G.moved&&Math.hypot(dx,dy)*view.k<3)return;
+    G.moved=true; G.after=xform(G.before,{pt:(x,y)=>[x+dx,y+dy],len:v=>v}); applySnap(G.after); renderAll();
+  }
+});
+function up(e){
+  if(e.pointerType==='touch'){
+    touches.delete(e.pointerId);
+    if(G&&G.type==='pinch'){if(touches.size<2){G=null;queueSave()}return}
+  }
+  if(!G||e.pointerId!==G.pid)return;
+  if(G.type==='draw')endDraw(); else if(G.type==='erase')endErase(); else if(G.type==='drag')endDrag(); else if(G.type==='pan')queueSave();
+  G=null;
+}
+stage.addEventListener('pointerup',up);
+stage.addEventListener('pointercancel',up);
+
+function startPinch(){
+  const [a,b]=[...touches.values()], c={x:(a.x+b.x)/2,y:(a.y+b.y)/2}, d=Math.hypot(a.x-b.x,a.y-b.y)||1;
+  G={type:'pinch',k0:view.k,d0:d,w0:toWorld(c.x,c.y)};
+}
+function pinchMove(){
+  const v=[...touches.values()]; if(v.length<2)return;
+  const [a,b]=v, c={x:(a.x+b.x)/2,y:(a.y+b.y)/2}, d=Math.hypot(a.x-b.x,a.y-b.y)||1;
+  const k=clamp(G.k0*d/G.d0,0.03,10); view.k=k; view.x=c.x-G.w0.x*k; view.y=c.y-G.w0.y*k; renderAll();
+}
+stage.addEventListener('wheel',e=>{
+  e.preventDefault(); if(!nb||(G&&G.type==='draw'))return;
+  if(e.ctrlKey||e.metaKey)zoomAt(e.clientX,e.clientY,Math.exp(-e.deltaY*(e.deltaMode===1?0.05:0.01)));
+  else{view.x-=e.deltaX;view.y-=e.deltaY;renderAll();queueSave()}
+},{passive:false});
+function zoomAt(sx,sy,f){
+  const k=clamp(view.k*f,0.03,10), w=toWorld(sx,sy); view.k=k; view.x=sx-w.x*k; view.y=sy-w.y*k; renderAll(); queueSave();
+}
+
+/* draw */
+function startDraw(e){
+  const w=toWorld(e.clientX,e.clientY), mark=tool==='mark';
+  cur={id:uid(),t:mark?'mark':'pen',c:color,w:SIZES[sizeIdx],pts:[w.x,w.y]};
+  if(e.pointerType==='pen'&&!mark)cur.ps=[pr(e)];
+  lx.setTransform(1,0,0,1,0,0); lx.clearRect(0,0,lv.width,lv.height); setT(lx);
+  lv.style.opacity=mark?0.35:1;
+  lx.fillStyle=color; lx.beginPath(); lx.arc(w.x,w.y,cur.w*(mark?5:1)*0.5*(cur.ps?(0.35+1.3*cur.ps[0]/100):1),0,6.2832); lx.fill();
+  G={type:'draw',pid:e.pointerId,ptype:e.pointerType,lx:w.x,ly:w.y};
+}
+function addPt(ev){
+  const w=toWorld(ev.clientX,ev.clientY), dx=w.x-G.lx, dy=w.y-G.ly, min=0.8/view.k;
+  if(dx*dx+dy*dy<min*min)return;
+  cur.pts.push(w.x,w.y); if(cur.ps)cur.ps.push(pr(ev)); G.lx=w.x; G.ly=w.y; liveSeg();
+}
+function endDraw(){
+  const s=cur; cur=null;
+  lx.setTransform(1,0,0,1,0,0); lx.clearRect(0,0,lv.width,lv.height); lv.style.opacity=1;
+  s.pts=s.pts.map(v=>Math.round(v*10)/10); nb.strokes.push(s); setT(cx); drawStroke(cx,s);
+  record({undo:()=>{const i=nb.strokes.indexOf(s);if(i>=0)nb.strokes.splice(i,1)},redo:()=>{nb.strokes.push(s)}});
+}
+/* erase */
+function startErase(e){G={type:'erase',pid:e.pointerId,ptype:e.pointerType,ex:null,ey:null,removed:[]};eraseAt(toWorld(e.clientX,e.clientY))}
+function eraseAt(w){
+  const r=12/view.k, pts=[];
+  if(G.ex!=null){const dx=w.x-G.ex,dy=w.y-G.ey,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(r*0.6)));for(let i=1;i<=n;i++)pts.push({x:G.ex+dx*i/n,y:G.ey+dy*i/n})}
+  else pts.push(w);
+  let changed=false;
+  for(const q of pts)for(let i=nb.strokes.length-1;i>=0;i--){const s=nb.strokes[i];if(strokeHit(s,q.x,q.y,r)){G.removed.push({s,i});nb.strokes.splice(i,1);changed=true}}
+  G.ex=w.x;G.ey=w.y; if(changed)renderAll();
+}
+function endErase(){
+  const rem=G.removed; if(!rem.length)return;
+  record({
+    undo:()=>{for(let k=rem.length-1;k>=0;k--)nb.strokes.splice(rem[k].i,0,rem[k].s)},
+    redo:()=>{for(let k=0;k<rem.length;k++)nb.strokes.splice(rem[k].i,1)}
+  });
+}
+/* select / move */
+function hitItem(w){
+  for(let i=nb.images.length-1;i>=0;i--){const it=nb.images[i];if(w.x>=it.x&&w.x<=it.x+it.w&&w.y>=it.y&&w.y<=it.y+it.h)return{kind:'images',item:it}}
+  for(let i=nb.pages.length-1;i>=0;i--){const it=nb.pages[i];if(w.x>=it.x&&w.x<=it.x+it.w&&w.y>=it.y&&w.y<=it.y+it.h)return{kind:'pages',item:it}}
+  return null;
+}
+function startSelect(e){
+  const w=toWorld(e.clientX,e.clientY), h=hitItem(w);
+  if(h){sel=h;G={type:'drag',pid:e.pointerId,ptype:e.pointerType,sx:w.x,sy:w.y,before:snapGroup(h.item,carried(h.item,h.kind)),after:null,moved:false}}
+  else{sel=null;G={type:'pan',pid:e.pointerId,ptype:e.pointerType,lx:e.clientX,ly:e.clientY}}
+  renderAll();
+}
+function endDrag(){
+  if(!G.moved)return; const before=G.before, after=G.after;
+  record({undo:()=>applySnap(before),redo:()=>applySnap(after)});
+}
+/* resize handle */
+const selH=$('selH');
+selH.addEventListener('pointerdown',e=>{
+  if(!sel)return; e.preventDefault(); selH.setPointerCapture(e.pointerId);
+  const it=sel.item; RS={pid:e.pointerId,before:snapGroup(it,carried(it,sel.kind)),ox:it.x,oy:it.y,w0:it.w,after:null};
+});
+selH.addEventListener('pointermove',e=>{
+  if(!RS||e.pointerId!==RS.pid)return;
+  const w=toWorld(e.clientX,e.clientY); const s=clamp((w.x-RS.ox)/RS.w0,60/RS.w0,12);
+  RS.after=xform(RS.before,{pt:(x,y)=>[RS.ox+(x-RS.ox)*s,RS.oy+(y-RS.oy)*s],len:v=>v*s});
+  applySnap(RS.after); renderAll();
+});
+function endRS(e){
+  if(!RS||e.pointerId!==RS.pid)return;
+  if(RS.after){const b=RS.before,a=RS.after;record({undo:()=>applySnap(b),redo:()=>applySnap(a)})}
+  RS=null;
+}
+selH.addEventListener('pointerup',endRS); selH.addEventListener('pointercancel',endRS);
+function delSel(){
+  if(!sel)return; const {kind,item}=sel, idx=nb[kind].indexOf(item); if(idx<0)return;
+  sel=null;
+  perform({redo:()=>{const i=nb[kind].indexOf(item);if(i>=0)nb[kind].splice(i,1)},undo:()=>{nb[kind].splice(Math.min(idx,nb[kind].length),0,item)}});
+}
+$('selDel').onclick=delSel;
+
+/* ---------- view helpers ---------- */
+function contentRect(){
+  let x0=1e12,y0=1e12,x1=-1e12,y1=-1e12; const add=(x,y,w,h)=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+w);y1=Math.max(y1,y+h)};
+  for(const p of nb.pages)add(p.x,p.y,p.w,p.h); for(const i of nb.images)add(i.x,i.y,i.w,i.h);
+  for(const s of nb.strokes){const b=bbox(s);add(b[0],b[1],b[2]-b[0],b[3]-b[1])}
+  return x0>1e11?{x:0,y:0,w:A4.w,h:A4.h}:{x:x0,y:y0,w:Math.max(1,x1-x0),h:Math.max(1,y1-y0)};
+}
+function viewFor(r,pad=0.06){
+  const ah=Math.max(120,H-TOP-BOT), k=clamp(Math.min(W*(1-2*pad)/r.w,ah*(1-2*pad)/r.h),0.03,4);
+  return {k,x:W/2-(r.x+r.w/2)*k,y:TOP+ah/2-(r.y+r.h/2)*k};
+}
+function animateTo(t,ms=320){
+  cancelAnimationFrame(animRaf); const s={...view}, t0=performance.now();
+  const step=now=>{let u=Math.min(1,(now-t0)/ms);u=1-Math.pow(1-u,3);view.x=s.x+(t.x-s.x)*u;view.y=s.y+(t.y-s.y)*u;view.k=s.k+(t.k-s.k)*u;renderAll();if(u<1)animRaf=requestAnimationFrame(step);else queueSave()};
+  animRaf=requestAnimationFrame(step);
+}
+
+/* ---------- pages and photos ---------- */
+function addPage(){
+  let x,y;
+  if(nb.pages.length){const last=nb.pages.reduce((a,b)=>b.x+b.w>a.x+a.w?b:a);x=last.x+last.w+80;y=last.y}
+  else{const c=toWorld(W/2,TOP+(H-TOP-BOT)/2);x=c.x-A4.w/2;y=c.y-A4.h/2}
+  const p={id:uid(),x,y,w:A4.w,h:A4.h};
+  perform({redo:()=>{nb.pages.push(p)},undo:()=>{const i=nb.pages.indexOf(p);if(i>=0)nb.pages.splice(i,1)}});
+  animateTo(viewFor(p));
+}
+const loadImage=src=>new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);i.src=src});
+async function shrink(file,max){
+  let bmp=null,w,h; try{bmp=await createImageBitmap(file)}catch(e){}
+  if(bmp){w=bmp.width;h=bmp.height}
+  else{const url=URL.createObjectURL(file);const im=await loadImage(url);URL.revokeObjectURL(url);if(!im)return null;bmp=im;w=im.naturalWidth;h=im.naturalHeight}
+  const s=Math.min(1,max/Math.max(w,h)), cw=Math.max(1,Math.round(w*s)), ch=Math.max(1,Math.round(h*s));
+  const c=document.createElement('canvas'); c.width=cw;c.height=ch; const g=c.getContext('2d'); g.fillStyle='#fff';g.fillRect(0,0,cw,ch);g.drawImage(bmp,0,0,cw,ch);
+  return {src:c.toDataURL('image/jpeg',0.82),w:cw,h:ch};
+}
+$('addPhoto').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('file').click()}});
+$('file').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f||!nb)return;
+  const r=await shrink(f,1800); if(!r){toast(t('not_pic'));return}
+  const id=uid(); await imgPut(id,r.src); const im=await loadImage(r.src); if(!im||!nb)return; imgs.set(id,im);
+  const ww=Math.min(r.w,(W/view.k)*0.6), hh=ww*r.h/r.w, c=toWorld(W/2,TOP+(H-TOP-BOT)/2);
+  const item={id,x:c.x-ww/2,y:c.y-hh/2,w:ww,h:hh};
+  perform({redo:()=>{nb.images.push(item)},undo:()=>{const i=nb.images.indexOf(item);if(i>=0)nb.images.splice(i,1)}});
+  setTool('select'); sel={kind:'images',item}; renderAll();
+};
+
+/* ---------- toolbar ---------- */
+function updUI(){
+  document.querySelectorAll('[data-tool]').forEach(b=>{const on=b.dataset.tool===tool;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
+  document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.c===color));
+  document.querySelectorAll('.sz').forEach(b=>b.classList.toggle('on',+b.dataset.size===sizeIdx));
+  $('undo').disabled=!undoS.length; $('redo').disabled=!redoS.length; stage.dataset.tool=tool;
+}
+function setTool(t){tool=t;if(t!=='select')sel=null;updUI();renderAll()}
+document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+document.querySelectorAll('.sz').forEach(b=>b.onclick=()=>{sizeIdx=+b.dataset.size;if(tool!=='pen'&&tool!=='mark')setTool('pen');else updUI()});
+PALETTE.forEach(c=>{
+  const b=document.createElement('button'); b.className='sw'; b.dataset.c=c; b.setAttribute('aria-label','Color '+c); b.innerHTML='<span style="background:'+c+'"></span>';
+  b.onclick=()=>{color=c;if(tool!=='pen'&&tool!=='mark')setTool('pen');else updUI()}; $('colors').appendChild(b);
+});
+$('undo').onclick=doUndo; $('redo').onclick=doRedo; $('addPage').onclick=addPage;
+$('zin').onclick=()=>zoomAt(W/2,H/2,1.3); $('zout').onclick=()=>zoomAt(W/2,H/2,1/1.3);
+$('zfit').onclick=()=>animateTo(viewFor(contentRect()));
+addEventListener('keydown',e=>{
+  if(!nb||e.target===$('title'))return;
+  if(e.code==='Space'){spaceDown=true;e.preventDefault();return}
+  const mod=e.ctrlKey||e.metaKey;
+  if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?doRedo():doUndo()}
+  else if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();doRedo()}
+  else if((e.key==='Delete'||e.key==='Backspace')&&sel){e.preventDefault();delSel()}
+});
+addEventListener('keyup',e=>{if(e.code==='Space')spaceDown=false});
+$('title').addEventListener('input',e=>{if(!nb)return;nb.name=e.target.value.trim()||'Untitled';touch()});
+$('title').addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+
+/* menu */
+let delArmed=false;
+function closeMenu(){$('menu').hidden=true;delArmed=false;$('delNb').lastElementChild.textContent=t('delete_nb')}
+$('menuBtn').onclick=()=>{const was=$('menu').hidden;closeMenu();$('menu').hidden=!was};
+$('delNb').onclick=async()=>{
+  if(!delArmed){delArmed=true;$('delNb').lastElementChild.textContent=t('delete_confirm');return}
+  const n=nb; skipSave=true; for(const i of n.images)await imgDel(i.id);
+  if(acct&&API&&n.rev>0)await dbPut({id:n.id,del:true,rev:n.rev,updated:Date.now()}); else await dbDel(n.id);
+  await closeNb(); skipSave=false;
+};
+
+/* ---------- saving ---------- */
+let saveT=0, contentDirty=false;
+function queueSave(){clearTimeout(saveT);saveT=setTimeout(saveNow,800)}
+function touch(){contentDirty=true;queueSave()}
+async function saveNow(){
+  clearTimeout(saveT); if(!nb||skipSave)return;
+  const n=nb;
+  n.view={x:view.x,y:view.y,k:view.k};
+  if(contentDirty){contentDirty=false;n.updated=Date.now();n.dirty=true}
+  await dbPut(n);
+  if(n.dirty)scheduleSync();
+}
+addEventListener('pagehide',saveNow);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveNow()});
+
+/* ---------- desk ---------- */
+const PLUS='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>';
+async function renderDesk(){
+  const list=(await dbAll()).filter(n=>!n.del).sort((a,b)=>a.created-b.created), shelf=$('shelf'); shelf.innerHTML='';
+  for(const n of list){
+    const b=document.createElement('button'); b.className='nbk'; b.setAttribute('aria-label',n.name);
+    b.style.setProperty('--c',n.color); b.style.setProperty('--r',(hash(n.id)%9-4)+'deg');
+    const lab=document.createElement('span'); lab.className='lab'; lab.dir='auto'; lab.textContent=n.name; b.appendChild(lab);
+    b.onclick=()=>openNb(n,b); shelf.appendChild(b);
+  }
+  const add=document.createElement('button'); add.className='nbk new'+(list.length?'':' pulse'); add.setAttribute('aria-label','New notebook'); add.innerHTML=PLUS;
+  add.style.setProperty('--r','-2deg');
+  add.onclick=async()=>{
+    const n={id:uid(),name:t('nb')+' '+(list.length+1),color:COVERS[list.length%COVERS.length],created:Date.now(),updated:Date.now(),
+      rev:0,dirty:true,imgUp:[],view:null,pages:[{id:uid(),x:0,y:0,w:A4.w,h:A4.h}],images:[],strokes:[]};
+    await dbPut(n); openNb(n,add);
+  };
+  shelf.appendChild(add);
+}
+function flyCover(el,color){
+  const r=el.getBoundingClientRect(), c=document.createElement('div'); c.className='fly'; c.style.background=color;
+  Object.assign(c.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+  document.body.appendChild(c); c.getBoundingClientRect();
+  requestAnimationFrame(()=>Object.assign(c.style,{left:'0px',top:'0px',width:'100%',height:'100%',borderRadius:'0px'}));
+  return c;
+}
+async function openNb(n,el){
+  if(opening)return; opening=true;
+  n=(await dbGet(n.id))||n;
+  const fly=el?flyCover(el,n.color):null;
+  const loadAll=Promise.all((n.images||[]).map(async i=>{const src=await imgGet(i.id);if(src){const im=await loadImage(src);if(im)imgs.set(i.id,im)}}));
+  await Promise.all([loadAll,sleep(fly?400:0)]);
+  nb=n; undoS=[];redoS=[];sel=null;G=null;cur=null; touches.clear();
+  $('title').value=nb.name; $('swatch').style.background=nb.color;
+  $('wall').hidden=false; resize();
+  view=nb.view?{...nb.view}:viewFor(contentRect());
+  setTool('pen'); updUI(); renderAll();
+  if(fly){fly.style.transition='opacity .25s';fly.style.opacity='0';setTimeout(()=>fly.remove(),300)}
+  opening=false;
+}
+async function closeNb(){
+  cancelCurrent(); cancelAnimationFrame(animRaf); await saveNow();
+  nb=null; imgs.clear(); sel=null; closeMenu(); $('wall').hidden=true; await renderDesk(); syncNow();
+}
+$('back').onclick=closeNb;
+
+/* ---------- account and sync ----------
+   Same pattern as the drone log: this app is static files; the notebooks are kept in a Google Apps Script
+   web app (a Drive folder). Every change is saved on the device first, then sent when there is a connection. */
+const API=(window.SCHOOLDESK_API||'').trim();
+const lget=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const lset=(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
+let acct=null; try{acct=JSON.parse(lget('sd_acct')||'null')}catch(e){}
+let syncing=false, syncAgain=false, syncT=0, syncState='none', changed=false, outArm=false, authMode='login';
+const isNet=ex=>!(ex&&ex.error);                 // an {error} is a server answer; anything else is the network
+
+function call(action,p){
+  const body=JSON.stringify(Object.assign({action,token:acct&&acct.token},p||{}));
+  const once=()=>{
+    const ac=new AbortController(), tm=setTimeout(()=>ac.abort(),30000);
+    // text/plain is a "simple" request: no CORS preflight (Apps Script does not answer OPTIONS)
+    return fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body,redirect:'follow',signal:ac.signal})
+      .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text()})
+      .then(txt=>JSON.parse(txt))                // a Google error page is not JSON, so it counts as a network failure
+      .finally(()=>clearTimeout(tm));
+  };
+  const safe={list:1,get:1,getImg:1};            // only reads are retried automatically
+  const run=safe[action]?()=>once().catch(()=>sleep(700).then(once)):once;
+  return run().then(o=>{if(o&&o.error==='AUTH'&&acct)signedOutLocal();return o});
+}
+const must=o=>{if(o&&o.error)throw o;return o};
+
+/* ----- status ----- */
+async function unsyncedCount(){return (await dbAll()).filter(n=>n.del||n.dirty).length}
+function setSync(s){
+  syncState=s;
+  const d=$('acctDot');
+  d.hidden=!acct;
+  d.className='dot '+({ok:'ok',busy:'busy',off:'warn',noserver:'warn',err:'bad'}[s]||'');
+  refreshAuthUI();
+}
+async function refreshAuthUI(){
+  $('authOut').hidden=!!acct; $('authIn').hidden=!acct;
+  $('authT').textContent=t(acct?'account':'signin');
+  if(acct){
+    $('aWho').textContent=t('signed_as',{n:acct.name});
+    const m={ok:'st_ok',busy:'st_busy',off:'st_off',noserver:'err_noserver',err:'st_err'}[syncState];
+    $('aStatus').textContent=m?t(m):'';
+    if(!outArm){
+      $('aNote').hidden=true; $('aOut').textContent=t('sign_out'); $('aOut').classList.remove('danger');
+    }
+  }
+}
+
+/* ----- scheduling ----- */
+function scheduleSync(ms){ if(!acct||!API)return; clearTimeout(syncT); syncT=setTimeout(()=>syncNow(),ms==null?5000:ms) }
+
+/* ----- one sync round: deletions, then each notebook, then notebooks only the server has ----- */
+async function syncNow(manual){
+  if(!acct)return;
+  if(!API){if(manual)setSync('noserver');return}
+  if(syncing){syncAgain=true;return}
+  syncing=true; changed=false; setSync('busy');
+  try{
+    if(nb)await saveNow();
+    const L=must(await call('list')), remote=L.nbs||{};
+    const local=await dbAll(), known=new Set(local.map(n=>n.id));
+    for(const n of local){                                       // 1. deleted here
+      if(!n.del)continue;
+      const r=remote[n.id];
+      if(r&&!r.del){const o=await call('del',{id:n.id});if(o.error&&o.error!=='NOT_FOUND')throw o}
+      await dbDel(n.id);
+    }
+    for(const n of local){                                       // 2. each local notebook
+      if(n.del)continue;
+      const r=remote[n.id], open=nb&&nb.id===n.id;
+      if(!r){ if(!open||n.dirty){n.rev=0;n.dirty=true;await pushNb(n)} }
+      else if(r.del){ if(open)continue; if(n.dirty)await forkLocal(n,false); else await removeLocal(n) }
+      else if(r.rev>(n.rev||0)){ if(open)continue; if(n.dirty)await forkLocal(n,true); else await pullNb(n.id,r.rev,n) }
+      else if(n.dirty){ await pushNb(n) }
+    }
+    for(const id in remote){                                     // 3. only on the server
+      const r=remote[id]; if(r.del||known.has(id))continue;
+      await pullNb(id,r.rev,null);
+    }
+    setSync('ok');
+  }catch(ex){
+    if(ex&&ex.error==='AUTH'){}                                   // signedOutLocal already ran
+    else setSync(isNet(ex)?'off':'err');
+  }finally{
+    syncing=false;
+    if(changed&&!nb)renderDesk();
+    if(syncAgain){syncAgain=false;setTimeout(()=>syncNow(),300)}
+  }
+}
+
+async function pushNb(n){
+  for(const im of n.images||[]){                                  // photos first, once each
+    if((n.imgUp||[]).includes(im.id))continue;
+    const src=await imgGet(im.id); if(!src)continue;
+    must(await call('putImg',{id:im.id,src}));
+    (n.imgUp=n.imgUp||[]).push(im.id);
+  }
+  const doc={id:n.id,name:n.name,color:n.color,created:n.created,updated:n.updated,pages:n.pages,images:n.images,strokes:n.strokes};
+  const stamp=n.updated;
+  const r=await call('put',{doc,baseRev:n.rev||0});
+  if(r.error==='CONFLICT'||r.error==='DELETED'){ if(nb&&nb.id===n.id)return; await forkLocal(n,r.error==='CONFLICT'); return }
+  must(r);
+  n.rev=r.rev; if(n.updated===stamp)n.dirty=false;
+  await dbPut(n);
+}
+async function pullNb(id,rev,existing){
+  const o=must(await call('get',{id})), d=o.doc;
+  for(const im of d.images||[]){
+    if(await imgGet(im.id))continue;
+    const g=must(await call('getImg',{id:im.id})); await imgPut(im.id,g.src);
+  }
+  const n=Object.assign({},d,{rev:o.rev||rev,dirty:false,imgUp:(d.images||[]).map(i=>i.id),view:existing?existing.view:null});
+  await dbPut(n); changed=true;
+}
+async function removeLocal(n){ for(const i of n.images||[])await imgDel(i.id); await dbDel(n.id); changed=true }
+/* Two devices changed the same notebook: keep this device's version as a copy, then take the server's. */
+async function forkLocal(n,pullAfter){
+  const c=JSON.parse(JSON.stringify(n));
+  c.id=uid(); c.name=(n.name+' '+t('copy')).slice(0,60); c.rev=0; c.dirty=true; c.imgUp=[]; c.created=Date.now(); c.updated=Date.now();
+  for(const im of c.images||[]){const src=await imgGet(im.id);const nid=uid();if(src)await imgPut(nid,src);im.id=nid}
+  await dbPut(c); changed=true;
+  if(pullAfter){const r=must(await call('list')).nbs[n.id]; if(r&&!r.del){await pullNb(n.id,r.rev,n)}else await removeLocal(n)}
+  else await removeLocal(n);
+  await pushNb(c);
+  toast(t('conflict'));
+}
+
+/* ----- sign in / out ----- */
+function signedOutLocal(){ acct=null; lset('sd_acct',null); toast(t('relogin')); setSync('none'); }
+async function wipeLocal(){ mem.clear(); memImg.clear(); if(db)for(const s of ['nb','img'])try{await rq(st(s,'readwrite').clear())}catch(e){} }
+function openAuth(){ outArm=false; setAuthMode('login'); $('aMsg').textContent=''; refreshAuthUI(); $('auth').hidden=false; const f=acct?$('aSync'):$('aName'); setTimeout(()=>f.focus(),30) }
+function closeAuth(){ $('auth').hidden=true; outArm=false }
+function setAuthMode(m){
+  authMode=m;
+  $('tabIn').classList.toggle('on',m==='login'); $('tabNew').classList.toggle('on',m==='register');
+  $('pin2wrap').hidden=m!=='register';
+  $('aGo').textContent=t(m==='login'?'signin':'create');
+  $('aPin').autocomplete=m==='login'?'current-password':'new-password';
+  $('aMsg').textContent='';
+}
+function initSyncUI(){
+  $('auth').dir=LANG==='he'?'rtl':'ltr';
+  $('acctBtn').onclick=openAuth; $('aClose').onclick=closeAuth;
+  $('auth').addEventListener('pointerdown',e=>{if(e.target===$('auth'))closeAuth()});
+  addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('auth').hidden)closeAuth()});
+  $('tabIn').onclick=()=>setAuthMode('login'); $('tabNew').onclick=()=>setAuthMode('register');
+  $('authForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const name=$('aName').value.trim(), pin=$('aPin').value, msg=$('aMsg'); msg.textContent='';
+    if(name.length<2||name.length>30){msg.textContent=t('err_name');return}
+    if(!/^\d{4,6}$/.test(pin)){msg.textContent=t('err_pin');return}
+    if(authMode==='register'&&pin!==$('aPin2').value){msg.textContent=t('err_pin_match');return}
+    if(!API){msg.textContent=t('err_noserver');return}
+    $('aGo').disabled=true;
+    try{
+      const o=await call(authMode,{name,pin});
+      if(o.error){msg.textContent=t({EXISTS:'err_exists',AUTH_FAIL:'err_auth',LOCKED:'err_locked',NAME:'err_name',PIN:'err_pin'}[o.error]||'err_net');return}
+      const owner=lget('sd_owner'); if(owner&&owner!==o.name)await wipeLocal();
+      lset('sd_owner',o.name); acct={name:o.name,token:o.token}; lset('sd_acct',JSON.stringify(acct));
+      $('aPin').value=''; $('aPin2').value='';
+      closeAuth(); await renderDesk(); syncNow(true);
+    }catch(ex){msg.textContent=t('err_net')}
+    finally{$('aGo').disabled=false}
+  });
+  $('aSync').onclick=()=>syncNow(true);
+  $('aOut').onclick=async()=>{
+    if(!outArm){
+      outArm=true; const n=await unsyncedCount();
+      $('aNote').hidden=false; $('aNote').textContent=(n?t('unsynced',{n})+' ':'')+t('clear_note');
+      $('aOut').textContent=t('sign_out_confirm'); $('aOut').classList.add('danger'); return;
+    }
+    try{await call('logout')}catch(e){}
+    acct=null; lset('sd_acct',null); lset('sd_owner',null); await wipeLocal();
+    outArm=false; closeAuth(); setSync('none'); await renderDesk();
+  };
+  addEventListener('online',()=>syncNow());
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow()});
+  setInterval(()=>{if(!document.hidden)syncNow()},45000);
+  setSync(acct?'busy':'none');
+}
+
+window.App={get nb(){return nb},get view(){return view}};
+applyI18n(); initSyncUI();
+openDB().then(d=>{db=d;if(!db)toast(t('no_store'));return renderDesk()}).then(()=>{if(acct&&API)syncNow()});
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
